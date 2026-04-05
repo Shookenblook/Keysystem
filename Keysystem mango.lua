@@ -31,7 +31,7 @@ local function AuthenticateUser()
     end)
 
     if not success or not response then 
-        return false, "Connection Error: Check if your API and Ngrok are running." 
+        return false, "Connection Error: Is the API and Ngrok running?" 
     end
 
     local data
@@ -40,11 +40,11 @@ local function AuthenticateUser()
     end)
 
     if not decodeSuccess then
-        return false, "Server Error: JSON Parsing Failed."
+        return false, "Server Error: Invalid Response Format."
     end
 
     if data.status == "success" then
-        -- The Python API sends a 'session' token. We store it to verify the GUI.
+        -- We store the secure session token from your Python API
         _G.MangoSession = data.session 
         return true, data.message
     else
@@ -56,13 +56,15 @@ end
 -- THE MAIN MANGO GUI FUNCTION
 -- ══════════════════════════════════════════
 local function LoadMangoGUI()
-    -- SECURITY CHECK: If someone tried to bypass the auth, this kicks them.
+    -- FINAL SECURITY CHECK
     if not _G.MangoSession then
-        Players.LocalPlayer:Kick("Unauthorized Execution.")
+        Players.LocalPlayer:Kick("\n[Mango Security]\nUnauthorized Execution.")
         return
     end
 
+    -- ══════════════════════════════════════════
     -- YOUR FULL GUI CODE STARTS HERE
+    -- ══════════════════════════════════════════
     local TweenService = game:GetService("TweenService")
     local UserInputService = game:GetService("UserInputService")
     local RunService = game:GetService("RunService")
@@ -79,22 +81,73 @@ local function LoadMangoGUI()
     local SUBTEXT = Color3.fromRGB(140, 140, 150)
     local TWEEN_FAST = TweenInfo.new(0.15, Enum.EasingStyle.Quad)
 
-    -- [INSERT ALL YOUR STATE VARIABLES HERE: flyEnabled, noclipEnabled, etc.]
-    -- [INSERT ALL YOUR GUI CREATION CODE HERE: ScreenGui, Win, Tabs, etc.]
-    -- [INSERT ALL YOUR FEATURE LOOPS HERE: Fly, Noclip, ESP, etc.]
+    -- STATE VARIABLES
+    local flyEnabled = false
+    local noclipEnabled = false
+    local infiniteJump = false
+    local godMode = false
+    local antiAfk = false
+    local camLockFeatureEnabled = false
+    local camLockActive = false
+    local camLockKey = Enum.KeyCode.F
+    local triggerBotEnabled = false
+    local triggerBotActive = false
+    local triggerKey = Enum.KeyCode.E
+    local fovEnabled = false
+    local fovRadius = 120
+    local lockSmooth = 0.2
+    local camLockPrediction = 0.1
+    local bulletTpEnabled = false
 
-    print("✅ MangoGUI Loaded for Session: " .. _G.MangoSession)
-    _G.MangoSession = nil -- Clear it so it can't be reused
+    -- [ HELPERS: getHum, getHRP, getClosestPlayer ]
+    local function getHum() local c = Player.Character return c and c:FindFirstChildOfClass("Humanoid") end
+    local function getHRP() local c = Player.Character return c and c:FindFirstChild("HumanoidRootPart") end
+
+    local function getClosestPlayer()
+        local cam = workspace.CurrentCamera
+        local center = Vector2.new(Mouse.X, Mouse.Y)
+        local closest = nil
+        local closestDist = math.huge
+        for _, plr in Players:GetPlayers() do
+            if plr ~= Player and plr.Character then
+                local head = plr.Character:FindFirstChild("Head")
+                local hum = plr.Character:FindFirstChildOfClass("Humanoid")
+                if head and hum and hum.Health > 0 then
+                    local screenPos, onScreen = cam:WorldToScreenPoint(head.Position)
+                    if onScreen then
+                        local screenDist = (Vector2.new(screenPos.X, screenPos.Y) - center).Magnitude
+                        if screenDist < fovRadius and screenDist < closestDist then
+                            closestDist = screenDist
+                            closest = plr
+                        end
+                    end
+                end
+            end
+        end
+        return closest
+    end
+
+    -- [ GUI INITIALIZATION CODE ]
+    local ScreenGui = Instance.new("ScreenGui")
+    ScreenGui.Name = "MangoGUI"
+    ScreenGui.ResetOnSpawn = false
+    ScreenGui.Parent = PlayerGui
+
+    -- [ ALL YOUR UI BUTTONS, TOGGLES, AND TABS GO HERE ]
+    -- ... Paste the rest of your UI layout and feature logic here ...
+
+    print("✅ MangoGUI Fully Loaded with Session: " .. _G.MangoSession)
+    _G.MangoSession = nil -- Clear the session for security
 end
 
 -- ══════════════════════════════════════════
 -- EXECUTION START
 -- ══════════════════════════════════════════
-local authed, msg = AuthenticateUser()
+local is_authed, auth_msg = AuthenticateUser()
 
-if authed then
-    print("🔓 Access Granted: " .. msg)
+if is_authed then
+    print("🔓 Access Granted: " .. auth_msg)
     LoadMangoGUI()
 else
-    Players.LocalPlayer:Kick("\n[Mango Auth]\n" .. tostring(msg))
+    Players.LocalPlayer:Kick("\n[Mango Auth]\n" .. tostring(auth_msg))
 end
