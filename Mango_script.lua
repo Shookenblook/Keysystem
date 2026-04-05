@@ -6,8 +6,9 @@ local Players = game:GetService("Players")
 -- ══════════════════════════════════════════
 -- CONFIGURATION
 -- ══════════════════════════════════════════
-local NGROK_URL = "https://subventionary-letha-boughten.ngrok-free.dev" 
-_G.Key = "MANGO-MCMN-GNKQ-FAD3" -- Your active key
+-- [[ CONFIGURATION ON GITHUB ]] --
+local NGROK_URL = "https://subventionary-letha-boughten.ngrok-free.dev" -- <--- UPDATE THIS
+local HttpService = game:GetService("HttpService")
 
 -- ══════════════════════════════════════════
 -- AUTHENTICATION LOGIC
