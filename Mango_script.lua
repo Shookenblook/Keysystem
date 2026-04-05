@@ -30,10 +30,12 @@ end
 
 -- ── Shared loading / denied screen (shown before the full GUI) ──
 local SplashGui = Instance.new("ScreenGui")
-SplashGui.Name          = "MangoSplash"
-SplashGui.ResetOnSpawn  = false
+SplashGui.Name           = "MangoSplash"
+SplashGui.ResetOnSpawn   = false
+SplashGui.IgnoreGuiInset = true
+SplashGui.DisplayOrder   = 999   -- always on top while checking
 SplashGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-SplashGui.Parent        = PlayerGui
+SplashGui.Parent         = PlayerGui
 
 local SplashBG = Instance.new("Frame")
 SplashBG.Size             = UDim2.new(1, 0, 1, 0)
@@ -164,6 +166,7 @@ TweenService:Create(SplashCard,
 	{ BackgroundTransparency = 1 }
 ):Play()
 task.wait(0.35)
+SplashBG.Visible  = false   -- instantly hide before Destroy so nothing blocks the GUI
 SplashGui:Destroy()
 
 -- ════════════════════════════════════════════════════════
@@ -252,10 +255,11 @@ end
 -- SCREEN GUI
 -- ══════════════════════════════════════════
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "MangoGUI"
-ScreenGui.ResetOnSpawn = false
+ScreenGui.Name          = "MangoGUI"
+ScreenGui.ResetOnSpawn  = false
+ScreenGui.IgnoreGuiInset = true   -- full viewport, no topbar offset
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-ScreenGui.Parent = PlayerGui
+ScreenGui.Parent        = PlayerGui
 
 -- FOV Circle
 local FovCircle = Instance.new("Frame")
@@ -341,19 +345,20 @@ task.spawn(function()
 end)
 
 local Win = Instance.new("Frame")
-Win.Name = "Window"
-Win.Size = UDim2.new(0, 640, 0, 520)
-Win.Position = UDim2.new(0.5, -320, 0.5, -295)  -- start 35px above final
+Win.Name            = "Window"
+Win.Size            = UDim2.new(0, 640, 0, 520)
+Win.AnchorPoint     = Vector2.new(0.5, 0.5)   -- pivot from center
+Win.Position        = UDim2.new(0.5, 0, 0.42, 0)  -- start slightly above center
 Win.BackgroundColor3 = BG
 Win.BorderSizePixel = 0
-Win.Active = true
-Win.Parent = ScreenGui
+Win.Active          = true
+Win.Parent          = ScreenGui
 Instance.new("UICorner", Win).CornerRadius = UDim.new(0, 10)
 
 -- Slide down + spring into place on open
 TweenService:Create(Win,
 	TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
-	{ Position = UDim2.new(0.5, -320, 0.5, -260) }
+	{ Position = UDim2.new(0.5, 0, 0.5, 0) }
 ):Play()
 
 local Strip = Instance.new("Frame")
@@ -449,7 +454,7 @@ local VerLabel = Instance.new("TextLabel")
 VerLabel.Size = UDim2.new(0, 50, 0, 14)
 VerLabel.Position = UDim2.new(0, 122, 0.5, -7)
 VerLabel.BackgroundTransparency = 1
-VerLabel.Text = "v2.5"
+VerLabel.Text = "v2.6"
 VerLabel.TextColor3 = SUBTEXT
 VerLabel.TextSize = 11
 VerLabel.Font = Enum.Font.Gotham
@@ -486,15 +491,15 @@ Divider.BorderSizePixel = 0
 Divider.Parent = Win
 
 -- ══════════════════════════════════════════
--- TITLE BAR DRAG
+-- TITLE BAR DRAG (AnchorPoint-aware)
 -- ══════════════════════════════════════════
 local guiDragging = false
 local guiDragStart, guiStartPos
 TitleBar.InputBegan:Connect(function(input)
 	if input.UserInputType == Enum.UserInputType.MouseButton1 then
-		guiDragging = true
+		guiDragging  = true
 		guiDragStart = input.Position
-		guiStartPos = Win.Position
+		guiStartPos  = Win.Position
 	end
 end)
 TitleBar.InputEnded:Connect(function(input)
@@ -505,6 +510,7 @@ end)
 UserInputService.InputChanged:Connect(function(input)
 	if guiDragging and input.UserInputType == Enum.UserInputType.MouseMovement then
 		local d = input.Position - guiDragStart
+		-- Keep using offset on the scale-based position (scale stays at 0.5/0.5)
 		Win.Position = UDim2.new(
 			guiStartPos.X.Scale,
 			guiStartPos.X.Offset + d.X,
@@ -1470,4 +1476,4 @@ end)
 -- ACTIVATE FIRST TAB
 -- ══════════════════════════════════════════
 activateTab(tabMovement)
-print("[MangoGUI v2.5] Loaded ✓ - Whitelist | Cam Lock | ESP")
+print("[MangoGUI v2.6] Loaded ✓ - Window centering fixed | SplashBG blocking fixed")
