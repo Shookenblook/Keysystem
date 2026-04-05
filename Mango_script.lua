@@ -6,7 +6,7 @@ local LocalPlayer = Players.LocalPlayer
 local NGROK_URL = "https://subventionary-letha-boughten.ngrok-free.dev/verify"
 
 local function CheckWhitelist()
-    print("[Mango] Checking whitelist for " .. LocalPlayer.Name .. "...")
+    print("[Mango] Verifying access for " .. LocalPlayer.Name .. "...")
     local success, response = pcall(function()
         return request({
             Url = NGROK_URL,
@@ -27,56 +27,43 @@ end
 -- MAIN EXECUTION
 -- ══════════════════════════════════════════
 if CheckWhitelist() then
-    print("✅ Access Granted! Welcome, " .. LocalPlayer.Name)
+    print("✅ Whitelist Passed! Loading GUI...")
 
-    -- Your GUI Code Starts Here
+    -- GUI START
     local TweenService = game:GetService("TweenService")
     local UserInputService = game:GetService("UserInputService")
     local RunService = game:GetService("RunService")
-    local VirtualUser = game:GetService("VirtualUser")
-    local Player = LocalPlayer
-    local PlayerGui = Player:WaitForChild("PlayerGui")
-    local Mouse = Player:GetMouse()
+    local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 
-    -- Colors
-    local ORANGE = Color3.fromRGB(255, 140, 30)
-    local BG = Color3.fromRGB(18, 18, 20)
-    local SIDEBAR = Color3.fromRGB(14, 14, 16)
-    local TEXT = Color3.fromRGB(225, 225, 225)
-
-    -- Create ScreenGui
     local ScreenGui = Instance.new("ScreenGui")
     ScreenGui.Name = "MangoGUI"
     ScreenGui.ResetOnSpawn = false
     ScreenGui.Parent = PlayerGui
 
-    -- Main Window
     local Win = Instance.new("Frame")
     Win.Name = "Window"
-    Win.Size = UDim2.new(0, 640, 0, 520)
-    Win.Position = UDim2.new(0.5, -320, 0.5, -260)
-    Win.BackgroundColor3 = BG
+    Win.Size = UDim2.new(0, 500, 0, 400)
+    Win.Position = UDim2.new(0.5, -250, 0.5, -200)
+    Win.BackgroundColor3 = Color3.fromRGB(18, 18, 20)
     Win.Parent = ScreenGui
-    Instance.new("UICorner", Win).CornerRadius = UDim.new(0, 10)
+    Instance.new("UICorner", Win)
 
-    -- Title Bar
     local TitleBar = Instance.new("Frame")
-    TitleBar.Size = UDim2.new(1, 0, 0, 46)
-    TitleBar.BackgroundColor3 = SIDEBAR
+    TitleBar.Size = UDim2.new(1, 0, 0, 40)
+    TitleBar.BackgroundColor3 = Color3.fromRGB(255, 140, 30)
     TitleBar.Parent = Win
-    Instance.new("UICorner", TitleBar).CornerRadius = UDim.new(0, 10)
+    Instance.new("UICorner", TitleBar)
 
     local TitleLabel = Instance.new("TextLabel")
     TitleLabel.Size = UDim2.new(1, 0, 1, 0)
+    TitleLabel.Text = "🥭 MANGO PREMIUM - ACCESS GRANTED"
+    TitleLabel.TextColor3 = Color3.new(1,1,1)
     TitleLabel.BackgroundTransparency = 1
-    TitleLabel.Text = "🥭 MANGO v2.4"
-    TitleLabel.TextColor3 = ORANGE
     TitleLabel.Font = Enum.Font.GothamBold
-    TitleLabel.TextSize = 16
     TitleLabel.Parent = TitleBar
 
-    -- [ Dragging Script ]
-    local dragging, dragInput, dragStart, startPos
+    -- Draggable logic
+    local dragging, dragStart, startPos
     TitleBar.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 then
             dragging = true
@@ -91,15 +78,13 @@ if CheckWhitelist() then
         end
     end)
     UserInputService.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            dragging = false
-        end
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
     end)
 
-    print("🥭 Mango GUI has successfully loaded!")
+    print("🥭 GUI LOADED SUCCESSFULLY")
 
 else
-    -- ❌ Access Denied: This part handles the kick
-    warn("❌ Whitelist check failed.")
-    LocalPlayer:Kick("\n[Mango Error]\nYou are not whitelisted.\nJoin the Discord to get access!")
+    -- THIS RUNS IF YOU ARE NOT WHITELISTED
+    warn("❌ ACCESS DENIED")
+    LocalPlayer:Kick("\n[Mango]\nNot Whitelisted!\nDiscord: .gg/mango")
 end
