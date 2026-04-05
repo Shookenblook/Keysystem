@@ -208,9 +208,34 @@ local camLockConn
 local espEnabled    = false
 local espNames      = true
 local espHealth     = true
-local espBoxes      = true   -- highlight outline
-local espChams      = false  -- filled highlight through walls
-local espObjects    = {}     -- [Player] = { highlight, billboard, healthFill, nameLabel }
+local espBoxes      = true
+local espChams      = false
+local espObjects    = {}
+
+-- AIMBOT STATE
+local aimbotEnabled   = false
+local aimbotHolding   = false
+local aimbotTarget    = nil
+local aimbotKey       = Enum.KeyCode.Q
+local aimbotSmooth    = 0.12   -- 0–1, lower = smoother
+local aimbotPart      = "Head"
+
+-- TRIGGERBOT STATE
+local triggerEnabled  = false
+local triggerHolding  = false
+local triggerKey      = Enum.KeyCode.E
+local triggerChance   = 100   -- percent
+
+-- FREECAM STATE
+local freecamEnabled  = false
+local freecamConn     = nil
+local freecamPos      = Vector3.zero
+local freecamPitch    = 0
+local freecamYaw      = 0
+local freecamSpeed    = 40
+
+-- FIRST PERSON STATE
+local fpMouseUnlocked = false
 
 -- ══════════════════════════════════════════
 -- HELPERS
@@ -1041,6 +1066,194 @@ Player.Idled:Connect(function()
 end)
 
 -- ══════════════════════════════════════════
+-- FREECAM (proper: freeze player, fly cam)
+-- ══════════════════════════════════════════
+local function setFreecam(on)
+	freecamEnabled = on
+	local cam = workspace.CurrentCamera
+	local hrp = getHRP()
+	local hum = getHum()
+
+	if on then
+		-- Freeze character in place
+		if hrp then
+			hrp.Anchored = true
+			freecamPos   = hrp.CFrame.Position + Vector3.new(0, 3, 0)
+		else
+			freecamPos = cam.CFrame.Position
+		end
+		if hum then
+			hum.WalkSpeed = 0
+			hum.JumpPower = 0
+		end
+
+		-- Grab current camera angles to start from
+		local lookVec  = cam.CFrame.LookVector
+		freecamPitch   = math.asin(math.clamp(lookVec.Y, -1, 1))
+		freecamYaw     = math.atan2(-lookVec.X, -lookVec.Z)
+
+		cam.CameraType = Enum.CameraType.Scriptable
+		UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
+
+		freecamConn = RunService.RenderStepped:Connect(function(dt)
+			if not freecamEnabled then return end
+
+			-- Mouse look
+			local delta = UserInputService:GetMouseDelta()
+			freecamYaw   = freecamYaw   - delta.X * 0.003
+			freecamPitch = math.clamp(freecamPitch - delta.Y * 0.003, -math.pi/2 + 0.05, math.pi/2 - 0.05)
+
+			-- Build orientation CFrame
+			local orientation = CFrame.Angles(0, freecamYaw, 0) * CFrame.Angles(freecamPitch, 0, 0)
+
+			-- WASD movement relative to look direction
+			local moveDir = Vector3.zero
+			local UIS = UserInputService
+			if UIS:IsKeyDown(Enum.KeyCode.W)         then moveDir += orientation.LookVector  end
+			if UIS:IsKeyDown(Enum.KeyCode.S)         then moveDir -= orientation.LookVector  end
+			if UIS:IsKeyDown(Enum.KeyCode.A)         then moveDir -= orientation.RightVector end
+			if UIS:IsKeyDown(Enum.KeyCode.D)         then moveDir += orientation.RightVector end
+			if UIS:IsKeyDown(Enum.KeyCode.Space)     then moveDir += Vector3.new(0, 1, 0)   end
+			if UIS:IsKeyDown(Enum.KeyCode.LeftShift) then moveDir -= Vector3.new(0, 1, 0)   end
+
+			-- Turbo speed with LeftControl
+			local spd = UIS:IsKeyDown(Enum.KeyCode.LeftControl) and freecamSpeed * 3 or freecamSpeed
+			freecamPos = freecamPos + moveDir * spd * dt
+
+			cam.CFrame = CFrame.new(freecamPos) * CFrame.Angles(0, freecamYaw, 0) * CFrame.Angles(freecamPitch, 0, 0)
+		end)
+	else
+		if freecamConn then freecamConn:Disconnect(); freecamConn = nil end
+
+		-- Unfreeze character
+		local hrpNow = getHRP()
+		local humNow = getHum()
+		if hrpNow then hrpNow.Anchored = false end
+		if humNow then
+			humNow.WalkSpeed = 16
+			humNow.JumpPower = 50
+		end
+
+		cam.CameraType = Enum.CameraType.Custom
+		UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+	end
+end
+
+-- ══════════════════════════════════════════
+-- AIMBOT (Camera mode, hold-to-aim)
+-- ══════════════════════════════════════════
+local function getAimbotTarget()
+	local cam      = workspace.CurrentCamera
+	local mousePos = UserInputService:GetMouseLocation()
+	local closest  = nil
+	local closestD = math.huge
+
+	for _, plr in Players:GetPlayers() do
+		if plr ~= Player and plr.Character then
+			local part = plr.Character:FindFirstChild(aimbotPart)
+			             or plr.Character:FindFirstChild("Head")
+			             or plr.Character:FindFirstChild("HumanoidRootPart")
+			local hum  = plr.Character:FindFirstChildOfClass("Humanoid")
+			if part and hum and hum.Health > 0 then
+				local sp, onScreen = cam:WorldToViewportPoint(part.Position)
+				if onScreen then
+					local d = (Vector2.new(sp.X, sp.Y) - mousePos).Magnitude
+					if d < fovRadius and d < closestD then
+						closestD = d
+						closest  = plr
+					end
+				end
+			end
+		end
+	end
+	return closest
+end
+
+-- Aimbot key input
+UserInputService.InputBegan:Connect(function(input, gpe)
+	if gpe or UserInputService:GetFocusedTextBox() then return end
+	if aimbotEnabled and input.KeyCode == aimbotKey then
+		aimbotHolding = true
+		aimbotTarget  = nil   -- re-find target each press
+		-- Lock camera so Roblox engine doesn't fight us
+		workspace.CurrentCamera.CameraType = Enum.CameraType.Scriptable
+	end
+end)
+
+UserInputService.InputEnded:Connect(function(input, gpe)
+	if input.KeyCode == aimbotKey then
+		if aimbotHolding then
+			-- Only restore camera if cam lock isn't also active
+			if not camLockEnabled then
+				workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
+			end
+		end
+		aimbotHolding = false
+		aimbotTarget  = nil
+	end
+end)
+
+-- TriggerBot key input
+UserInputService.InputBegan:Connect(function(input, gpe)
+	if gpe or UserInputService:GetFocusedTextBox() then return end
+	if triggerEnabled and input.KeyCode == triggerKey then
+		triggerHolding = true
+	end
+end)
+
+UserInputService.InputEnded:Connect(function(input, gpe)
+	if input.KeyCode == triggerKey then
+		triggerHolding = false
+	end
+end)
+
+-- Aimbot + TriggerBot loop
+RunService.RenderStepped:Connect(function(dt)
+	-- Aimbot
+	if aimbotEnabled and aimbotHolding then
+		-- Acquire target
+		if not aimbotTarget or not aimbotTarget.Character then
+			aimbotTarget = getAimbotTarget()
+		end
+
+		if aimbotTarget and aimbotTarget.Character then
+			local part = aimbotTarget.Character:FindFirstChild(aimbotPart)
+			             or aimbotTarget.Character:FindFirstChild("Head")
+			             or aimbotTarget.Character:FindFirstChild("HumanoidRootPart")
+			local hum  = aimbotTarget.Character:FindFirstChildOfClass("Humanoid")
+
+			if part and hum and hum.Health > 0 then
+				local cam    = workspace.CurrentCamera
+				local origin = cam.CFrame.Position
+				local alpha  = 1 - (1 - aimbotSmooth) ^ (dt * 60)
+				cam.CFrame   = cam.CFrame:Lerp(CFrame.lookAt(origin, part.Position), alpha)
+			else
+				aimbotTarget = nil
+			end
+		end
+	end
+
+	-- TriggerBot — fire when a valid enemy is under the crosshair
+	if triggerEnabled and triggerHolding then
+		local target = getAimbotTarget()
+		if target then
+			local roll = math.random(1, 100)
+			if roll <= triggerChance then
+				-- Use executor click function if available, otherwise simulate via VirtualUser
+				if getfenv and getfenv().mouse1click then
+					getfenv().mouse1click()
+				else
+					VirtualUser:Button1Down(Vector2.new(0, 0), workspace.CurrentCamera.CFrame)
+					task.defer(function()
+						VirtualUser:Button1Up(Vector2.new(0, 0), workspace.CurrentCamera.CFrame)
+					end)
+				end
+			end
+		end
+	end
+end)
+
+-- ══════════════════════════════════════════
 -- CAM LOCK (fully fixed)
 -- ══════════════════════════════════════════
 local function setLockIndicator(on, name)
@@ -1166,8 +1379,16 @@ Player.CharacterAdded:Connect(function()
 	flyEnabled = false
 	bv = nil
 	bg = nil
+	-- Clean up freecam if active (character respawned)
+	if freecamEnabled then
+		if freecamConn then freecamConn:Disconnect(); freecamConn = nil end
+		freecamEnabled = false
+		workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
+		UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+	end
+	-- Re-apply cam lock if it was active
 	if camLockEnabled then
-		task.wait(1)  -- wait for character to fully load before reconnecting
+		task.wait(1)
 		updateCamLockConnection()
 	else
 		lockedTarget = nil
@@ -1365,6 +1586,42 @@ end)
 
 -- AIMBOT TAB
 SectionHeader(as, "Aimbot")
+Toggle(as, "Enable Aimbot", "Hold aim key to lock onto nearest player", false, function(on)
+	aimbotEnabled = on
+	if not on then
+		aimbotHolding = false
+		aimbotTarget  = nil
+		if not camLockEnabled and not freecamEnabled then
+			workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
+		end
+	end
+end)
+Keybind(as, "Aim Key", "Hold this key to aim", Enum.KeyCode.Q, function(k)
+	aimbotKey = k
+end)
+
+SectionHeader(as, "Aim Part")
+Toggle(as, "Aim at Head", "Target head instead of HumanoidRootPart", true, function(on)
+	aimbotPart = on and "Head" or "HumanoidRootPart"
+end)
+Slider(as, "Aim Smoothness", 1, 20, 7, "", function(v)
+	-- 1 = instant snap, 20 = very slow
+	aimbotSmooth = v / 20
+end)
+
+SectionHeader(as, "TriggerBot")
+Toggle(as, "Enable TriggerBot", "Auto-fires when enemy is in crosshair", false, function(on)
+	triggerEnabled = on
+	if not on then triggerHolding = false end
+end)
+Keybind(as, "Trigger Key", "Hold this key to activate trigger", Enum.KeyCode.E, function(k)
+	triggerKey = k
+end)
+Slider(as, "Trigger Chance", 1, 100, 100, "%", function(v)
+	triggerChance = v
+end)
+
+SectionHeader(as, "Silent Aim")
 Toggle(as, "Silent Aim", "Silently snaps bullets to nearest player", false, function(on)
 	silentAimEnabled = on
 	if on and not oldNamecall then
@@ -1392,10 +1649,10 @@ Toggle(as, "Silent Aim", "Silently snaps bullets to nearest player", false, func
 	end
 end)
 
-Keybind(as, "Camera Lock", "Click → press any key to toggle cam lock", Enum.KeyCode.F, function(newKey)
+SectionHeader(as, "Camera Lock")
+Keybind(as, "Camera Lock Key", "Press to toggle cam lock on nearest player", Enum.KeyCode.F, function(newKey)
 	camLockKey = newKey
 end)
-
 Toggle(as, "Bullet TP", "Flash-TPs to target on left click", false, function(on) bulletTpEnabled = on end)
 
 SectionHeader(as, "FOV")
@@ -1411,7 +1668,6 @@ SectionHeader(as, "Settings")
 Slider(as, "Lock Smoothness", 1, 20, 4, "", function(v)
 	lockSmooth = v / 20
 end)
--- NEW: Cam Lock Prediction slider
 Slider(as, "Cam Lock Prediction", 0, 50, 10, "0.01s", function(v)
 	camLockPrediction = v / 100
 end)
@@ -1425,9 +1681,25 @@ end)
 SectionHeader(cs, "Controls")
 Toggle(cs, "First Person Lock", "Forces camera into first person", false, function(on)
 	Player.CameraMaxZoomDistance = on and 0.5 or 128
+	-- When turning off FP lock also restore mouse
+	if not on then
+		fpMouseUnlocked = false
+		UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+	end
 end)
-Toggle(cs, "Freecam", "Detaches camera from your character", false, function(on)
-	workspace.CurrentCamera.CameraType = on and Enum.CameraType.Scriptable or Enum.CameraType.Custom
+Toggle(cs, "Unlock Mouse (FP)", "Frees the cursor while in first person", false, function(on)
+	fpMouseUnlocked = on
+	UserInputService.MouseBehavior = on
+		and Enum.MouseBehavior.Default
+		or  Enum.MouseBehavior.LockCenter
+end)
+
+SectionHeader(cs, "Freecam")
+Toggle(cs, "Freecam", "Freeze player · fly camera freely around the map", false, function(on)
+	setFreecam(on)
+end)
+Slider(cs, "Freecam Speed", 5, 200, 40, "", function(v)
+	freecamSpeed = v
 end)
 
 -- WORLD TAB
