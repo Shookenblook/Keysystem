@@ -490,7 +490,7 @@ local VerLabel = Instance.new("TextLabel")
 VerLabel.Size                 = UDim2.new(0,50,0,14)
 VerLabel.Position             = UDim2.new(0,122,0.5,-7)
 VerLabel.BackgroundTransparency = 1
-VerLabel.Text                 = "v2.8"
+VerLabel.Text                 = "v2.9"
 VerLabel.TextColor3           = SUBTEXT
 VerLabel.TextSize             = 11
 VerLabel.Font                 = Enum.Font.Gotham
@@ -1144,10 +1144,22 @@ local function updateCamLockConnection()
 
 			targetDeadTimer = 0
 
-			local origin    = camNow.CFrame.Position
+			-- Always derive origin from our own head/HRP each frame.
+			-- cam.CFrame.Position is frozen in Scriptable mode so the
+			-- camera would stay stuck in place while the player moves.
+			local myChar  = Player.Character
+			local myHead  = myChar and myChar:FindFirstChild("Head")
+			local myHRP   = myChar and myChar:FindFirstChild("HumanoidRootPart")
+			local origin  = myHead and (myHead.Position + Vector3.new(0, 0.5, 0))
+			               or myHRP and myHRP.Position
+			               or camNow.CFrame.Position   -- final fallback
+
 			local predicted = head.Position + (hrp.Velocity or Vector3.zero) * camLockPrediction
 			local alpha     = 1 - (1 - lockSmooth) ^ (dt * 60)
-			camNow.CFrame   = camNow.CFrame:Lerp(CFrame.lookAt(origin, predicted), alpha)
+			-- Lerp only the rotation, then snap position to the live origin
+			local goalCF    = CFrame.lookAt(origin, predicted)
+			local lerpedRot = camNow.CFrame:Lerp(goalCF, alpha).Rotation
+			camNow.CFrame   = CFrame.new(origin) * lerpedRot
 		end)
 	else
 		-- Release camera back to Custom (only if we own it)
@@ -1211,9 +1223,18 @@ RunService.RenderStepped:Connect(function(dt)
 			             or aimbotTarget.Character:FindFirstChild("HumanoidRootPart")
 			local hum  = aimbotTarget.Character:FindFirstChildOfClass("Humanoid")
 			if part and hum and hum.Health > 0 then
-				local cam   = workspace.CurrentCamera
-				local alpha = 1 - (1 - aimbotSmooth)^(dt*60)
-				cam.CFrame  = cam.CFrame:Lerp(CFrame.lookAt(cam.CFrame.Position, part.Position), alpha)
+				local cam    = workspace.CurrentCamera
+				-- Same fix: read origin from our head, not cam.CFrame.Position
+				local myChar = Player.Character
+				local myHead = myChar and myChar:FindFirstChild("Head")
+				local myHRP  = myChar and myChar:FindFirstChild("HumanoidRootPart")
+				local origin = myHead and (myHead.Position + Vector3.new(0, 0.5, 0))
+				               or myHRP and myHRP.Position
+				               or cam.CFrame.Position
+				local alpha    = 1 - (1 - aimbotSmooth)^(dt*60)
+				local goalCF   = CFrame.lookAt(origin, part.Position)
+				local lerpedRot = cam.CFrame:Lerp(goalCF, alpha).Rotation
+				cam.CFrame     = CFrame.new(origin) * lerpedRot
 			else
 				aimbotTarget = nil
 			end
@@ -1521,4 +1542,4 @@ Toggle(es,"Chams","Semi-transparent fill through walls",false,function(on) espCh
 -- ACTIVATE FIRST TAB
 -- ══════════════════════════════════════════
 activateTab(tabMovement)
-print("[MangoGUI v2.8] Loaded ✓ — aimbot camera conflict fixed")
+print("[MangoGUI v2.9] Loaded ✓ — camera follows player fix")
