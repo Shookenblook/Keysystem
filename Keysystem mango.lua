@@ -1,16 +1,20 @@
--- [[ MANGOLOL OFFICIAL LOADER ]] --
+-- [[ MANGOLOL INTEGRATED AUTH & GUI ]] --
 local HttpService = game:GetService("HttpService")
 local RbxAnalytics = game:GetService("RbxAnalyticsService")
+local Players = game:GetService("Players")
 
--- CONFIG (Updated with your live ngrok link)
+-- ══════════════════════════════════════════
+-- CONFIGURATION
+-- ══════════════════════════════════════════
 local NGROK_URL = "https://subventionary-letha-boughten.ngrok-free.dev" 
-local GITHUB_RAW = "https://raw.githubusercontent.com/Shookenblook/Mango/refs/heads/main/Mango.lua"
+_G.Key = _G.Key or "PASTE_KEY_HERE"
 
--- Use the key from the Discord bot here
-_G.Key = _G.Key or "PASTE_YOUR_KEY_HERE"
-local HWID = RbxAnalytics:GetClientId()
-
-local function authenticate()
+-- ══════════════════════════════════════════
+-- AUTHENTICATION LOGIC
+-- ══════════════════════════════════════════
+local function AuthenticateUser()
+    local HWID = RbxAnalytics:GetClientId()
+    
     local success, response = pcall(function()
         return request({
             Url = NGROK_URL .. "/verify",
@@ -27,7 +31,7 @@ local function authenticate()
     end)
 
     if not success or not response then 
-        return false, "Connection Error: Check if api.py is running on port 5000." 
+        return false, "Connection Error: Check if your API and Ngrok are running." 
     end
 
     local data
@@ -36,16 +40,61 @@ local function authenticate()
     end)
 
     if not decodeSuccess then
-        return false, "Server Error: Make sure your api.py terminal doesn't have errors."
+        return false, "Server Error: JSON Parsing Failed."
     end
 
-    return data.status == "success", data.message
+    if data.status == "success" then
+        -- The Python API sends a 'session' token. We store it to verify the GUI.
+        _G.MangoSession = data.session 
+        return true, data.message
+    else
+        return false, data.message
+    end
 end
 
-local is_authed, message = authenticate()
-if is_authed then
-    print("✅ Success! Loading Mango...")
-    loadstring(game:HttpGet(GITHUB_RAW))()
+-- ══════════════════════════════════════════
+-- THE MAIN MANGO GUI FUNCTION
+-- ══════════════════════════════════════════
+local function LoadMangoGUI()
+    -- SECURITY CHECK: If someone tried to bypass the auth, this kicks them.
+    if not _G.MangoSession then
+        Players.LocalPlayer:Kick("Unauthorized Execution.")
+        return
+    end
+
+    -- YOUR FULL GUI CODE STARTS HERE
+    local TweenService = game:GetService("TweenService")
+    local UserInputService = game:GetService("UserInputService")
+    local RunService = game:GetService("RunService")
+    local VirtualUser = game:GetService("VirtualUser")
+    local Player = Players.LocalPlayer
+    local PlayerGui = Player:WaitForChild("PlayerGui")
+    local Mouse = Player:GetMouse()
+
+    local ORANGE = Color3.fromRGB(255, 140, 30)
+    local BG = Color3.fromRGB(18, 18, 20)
+    local CARD = Color3.fromRGB(28, 28, 32)
+    local SIDEBAR = Color3.fromRGB(14, 14, 16)
+    local TEXT = Color3.fromRGB(225, 225, 225)
+    local SUBTEXT = Color3.fromRGB(140, 140, 150)
+    local TWEEN_FAST = TweenInfo.new(0.15, Enum.EasingStyle.Quad)
+
+    -- [INSERT ALL YOUR STATE VARIABLES HERE: flyEnabled, noclipEnabled, etc.]
+    -- [INSERT ALL YOUR GUI CREATION CODE HERE: ScreenGui, Win, Tabs, etc.]
+    -- [INSERT ALL YOUR FEATURE LOOPS HERE: Fly, Noclip, ESP, etc.]
+
+    print("✅ MangoGUI Loaded for Session: " .. _G.MangoSession)
+    _G.MangoSession = nil -- Clear it so it can't be reused
+end
+
+-- ══════════════════════════════════════════
+-- EXECUTION START
+-- ══════════════════════════════════════════
+local authed, msg = AuthenticateUser()
+
+if authed then
+    print("🔓 Access Granted: " .. msg)
+    LoadMangoGUI()
 else
-    game.Players.LocalPlayer:Kick("\n[Mango Auth]\n" .. tostring(message))
+    Players.LocalPlayer:Kick("\n[Mango Auth]\n" .. tostring(msg))
 end
