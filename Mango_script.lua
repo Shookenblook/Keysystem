@@ -140,10 +140,6 @@ task.wait(0.35)
 SplashBG.Visible = false
 SplashGui:Destroy()
 
--- ════════════════════════════════════════════════════════
--- EVERYTHING BELOW ONLY RUNS IF WHITELIST CHECK PASSES
--- ════════════════════════════════════════════════════════
-
 local Mouse = Player:GetMouse()
 
 local ORANGE     = Color3.fromRGB(255,140,30)
@@ -170,7 +166,6 @@ local fovRadius        = 120
 local bv, bg
 local oldNamecall      = nil
 
--- Aimbot state
 local aimbotEnabled = false
 local aimbotHolding = false
 local aimbotTarget  = nil
@@ -178,13 +173,11 @@ local aimbotKey     = Enum.KeyCode.Q
 local aimbotSmooth  = 0.12
 local aimbotPart    = "Head"
 
--- TriggerBot state
 local triggerEnabled = false
 local triggerHolding = false
 local triggerKey     = Enum.KeyCode.E
 local triggerChance  = 100
 
--- Freecam state
 local freecamEnabled = false
 local freecamConn    = nil
 local freecamPos     = Vector3.zero
@@ -192,9 +185,6 @@ local freecamPitch   = 0
 local freecamYaw     = 0
 local freecamSpeed   = 40
 
--- ══════════════════════════════════════════
--- CAM LOCK STATE  (ttwizz-style)
--- ══════════════════════════════════════════
 local camLockEnabled    = false
 local camLockKey        = Enum.KeyCode.F
 local camLockPrediction = 0.1
@@ -203,27 +193,9 @@ local lockedTarget      = nil
 local camLockConn       = nil
 local targetDeadTimer   = 0
 
--- ══════════════════════════════════════════
--- CAMERA OWNER SYSTEM
--- Tracks who currently needs Scriptable mode
--- so aimbot and camlock don't fight each other
--- ══════════════════════════════════════════
--- "none" | "aimbot" | "camlock"
-local cameraOwner = "none"
+-- REMOVED: Camera owner system entirely
+-- Camera stays on Custom mode at all times
 
-local function claimCamera(owner)
-	cameraOwner = owner
-	workspace.CurrentCamera.CameraType = Enum.CameraType.Scriptable
-end
-
-local function releaseCamera(owner)
-	if cameraOwner == owner then
-		cameraOwner = "none"
-		workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
-	end
-end
-
--- ESP state
 local espEnabled = false
 local espNames   = true
 local espHealth  = true
@@ -243,7 +215,6 @@ local function getHRP()
 	return c and c:FindFirstChild("HumanoidRootPart")
 end
 
--- Used by silent aim / bullet TP / FOV circle
 local function getClosestPlayer()
 	local cam      = workspace.CurrentCamera
 	local mousePos = Vector2.new(Mouse.X, Mouse.Y)
@@ -267,7 +238,6 @@ local function getClosestPlayer()
 	return closest
 end
 
--- Used by aimbot / triggerbot / cam lock
 local function getAimbotTarget()
 	local cam      = workspace.CurrentCamera
 	local mousePos = UserInputService:GetMouseLocation()
@@ -303,7 +273,6 @@ ScreenGui.IgnoreGuiInset = true
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 ScreenGui.Parent         = PlayerGui
 
--- FOV Circle (follows mouse)
 local FovCircle = Instance.new("Frame")
 FovCircle.Name = "FovCircle"
 FovCircle.BackgroundTransparency = 1
@@ -313,10 +282,10 @@ FovCircle.Visible = false
 FovCircle.Parent  = ScreenGui
 Instance.new("UICorner",FovCircle).CornerRadius = UDim.new(1,0)
 local FovStroke = Instance.new("UIStroke")
-FovStroke.Color       = ORANGE
-FovStroke.Thickness   = 1.5
+FovStroke.Color        = ORANGE
+FovStroke.Thickness    = 1.5
 FovStroke.Transparency = 0.3
-FovStroke.Parent      = FovCircle
+FovStroke.Parent       = FovCircle
 
 RunService.RenderStepped:Connect(function()
 	if not fovEnabled then return end
@@ -325,13 +294,10 @@ RunService.RenderStepped:Connect(function()
 	FovCircle.Position = UDim2.new(0, m.X - fovRadius, 0, m.Y - fovRadius)
 end)
 
--- ══════════════════════════════════════════
--- LOCK INDICATOR HUD  (from ttwizz)
--- ══════════════════════════════════════════
 local LockIndicator = Instance.new("Frame")
-LockIndicator.Size          = UDim2.new(0,220,0,36)
-LockIndicator.AnchorPoint   = Vector2.new(0.5,0)
-LockIndicator.Position      = UDim2.new(0.5,0,0,14)
+LockIndicator.Size             = UDim2.new(0,220,0,36)
+LockIndicator.AnchorPoint      = Vector2.new(0.5,0)
+LockIndicator.Position         = UDim2.new(0.5,0,0,14)
 LockIndicator.BackgroundColor3 = Color3.fromRGB(14,14,16)
 LockIndicator.BorderSizePixel  = 0
 LockIndicator.Visible          = false
@@ -340,15 +306,15 @@ LockIndicator.Parent           = ScreenGui
 Instance.new("UICorner",LockIndicator).CornerRadius = UDim.new(0,8)
 
 local LockStroke = Instance.new("UIStroke")
-LockStroke.Color       = ORANGE
-LockStroke.Thickness   = 1.5
+LockStroke.Color        = ORANGE
+LockStroke.Thickness    = 1.5
 LockStroke.Transparency = 0.3
-LockStroke.Parent      = LockIndicator
+LockStroke.Parent       = LockIndicator
 
 local LockDot = Instance.new("Frame")
-LockDot.Size            = UDim2.new(0,8,0,8)
-LockDot.AnchorPoint     = Vector2.new(0,0.5)
-LockDot.Position        = UDim2.new(0,12,0.5,0)
+LockDot.Size             = UDim2.new(0,8,0,8)
+LockDot.AnchorPoint      = Vector2.new(0,0.5)
+LockDot.Position         = UDim2.new(0,12,0.5,0)
 LockDot.BackgroundColor3 = ORANGE
 LockDot.BorderSizePixel  = 0
 LockDot.ZIndex           = 21
@@ -356,18 +322,17 @@ LockDot.Parent           = LockIndicator
 Instance.new("UICorner",LockDot).CornerRadius = UDim.new(1,0)
 
 local LockLabel = Instance.new("TextLabel")
-LockLabel.Size              = UDim2.new(1,-32,1,0)
-LockLabel.Position          = UDim2.new(0,28,0,0)
+LockLabel.Size                 = UDim2.new(1,-32,1,0)
+LockLabel.Position             = UDim2.new(0,28,0,0)
 LockLabel.BackgroundTransparency = 1
-LockLabel.Text              = "🔒 Locked: —"
-LockLabel.TextColor3        = TEXT
-LockLabel.TextSize          = 13
-LockLabel.Font              = Enum.Font.GothamSemibold
-LockLabel.TextXAlignment    = Enum.TextXAlignment.Left
-LockLabel.ZIndex            = 21
-LockLabel.Parent            = LockIndicator
+LockLabel.Text                 = "🔒 Locked: —"
+LockLabel.TextColor3           = TEXT
+LockLabel.TextSize             = 13
+LockLabel.Font                 = Enum.Font.GothamSemibold
+LockLabel.TextXAlignment       = Enum.TextXAlignment.Left
+LockLabel.ZIndex               = 21
+LockLabel.Parent               = LockIndicator
 
--- Pulse the dot while locked
 task.spawn(function()
 	while true do
 		if camLockEnabled and lockedTarget then
@@ -417,12 +382,9 @@ task.spawn(function()
 	end
 end)
 
--- ══════════════════════════════════════════
--- TITLE BAR
--- ══════════════════════════════════════════
 local TitleBar = Instance.new("Frame")
-TitleBar.Name            = "TitleBar"
-TitleBar.Size            = UDim2.new(1,0,0,46)
+TitleBar.Name             = "TitleBar"
+TitleBar.Size             = UDim2.new(1,0,0,46)
 TitleBar.BackgroundColor3 = SIDEBAR
 TitleBar.BorderSizePixel  = 0
 TitleBar.Active           = true
@@ -509,7 +471,7 @@ CloseBtn.BorderSizePixel  = 0
 CloseBtn.Parent           = TitleBar
 Instance.new("UICorner",CloseBtn).CornerRadius = UDim.new(0,6)
 CloseBtn.MouseEnter:Connect(function() TweenService:Create(CloseBtn,TWEEN_FAST,{BackgroundColor3=Color3.fromRGB(210,55,55)}):Play() end)
-CloseBtn.MouseLeave:Connect(function() TweenService:Create(CloseBtn,TWEEN_FAST,{BackgroundColor3=Color3.fromRGB(60,60,65)}):Play()  end)
+CloseBtn.MouseLeave:Connect(function() TweenService:Create(CloseBtn,TWEEN_FAST,{BackgroundColor3=Color3.fromRGB(60,60,65)}):Play() end)
 CloseBtn.MouseButton1Click:Connect(function() ScreenGui:Destroy() end)
 
 local Divider = Instance.new("Frame")
@@ -519,7 +481,6 @@ Divider.BackgroundColor3 = Color3.fromRGB(45,45,50)
 Divider.BorderSizePixel  = 0
 Divider.Parent           = Win
 
--- Drag
 local guiDragging, guiDragStart, guiStartPos = false, nil, nil
 TitleBar.InputBegan:Connect(function(i)
 	if i.UserInputType == Enum.UserInputType.MouseButton1 then
@@ -575,14 +536,13 @@ ContentArea.BackgroundTransparency = 1
 ContentArea.BorderSizePixel      = 0
 ContentArea.Parent               = Win
 
--- Tab flash overlay
 local TabFlash = Instance.new("Frame")
-TabFlash.Size                 = UDim2.new(1,0,1,0)
-TabFlash.BackgroundColor3     = BG
+TabFlash.Size                   = UDim2.new(1,0,1,0)
+TabFlash.BackgroundColor3       = BG
 TabFlash.BackgroundTransparency = 1
-TabFlash.BorderSizePixel      = 0
-TabFlash.ZIndex               = 8
-TabFlash.Parent               = ContentArea
+TabFlash.BorderSizePixel        = 0
+TabFlash.ZIndex                 = 8
+TabFlash.Parent                 = ContentArea
 
 local function flashTabTransition()
 	TabFlash.BackgroundTransparency = 0.35
@@ -690,10 +650,10 @@ end
 
 local function SectionHeader(scroll, text)
 	local f = Instance.new("Frame")
-	f.Size                 = UDim2.new(1,0,0,24)
+	f.Size                   = UDim2.new(1,0,0,24)
 	f.BackgroundTransparency = 1
-	f.LayoutOrder          = nextOrder(scroll)
-	f.Parent               = scroll
+	f.LayoutOrder            = nextOrder(scroll)
+	f.Parent                 = scroll
 	local line = Instance.new("Frame")
 	line.Size             = UDim2.new(1,0,0,1)
 	line.Position         = UDim2.new(0,0,0.5,0)
@@ -701,15 +661,15 @@ local function SectionHeader(scroll, text)
 	line.BorderSizePixel  = 0
 	line.Parent           = f
 	local lbl = Instance.new("TextLabel")
-	lbl.AutomaticSize  = Enum.AutomaticSize.X
-	lbl.Size           = UDim2.new(0,0,1,0)
+	lbl.AutomaticSize    = Enum.AutomaticSize.X
+	lbl.Size             = UDim2.new(0,0,1,0)
 	lbl.BackgroundColor3 = BG
 	lbl.BorderSizePixel  = 0
-	lbl.Text           = " "..text:upper().." "
-	lbl.TextColor3     = ORANGE
-	lbl.TextSize       = 10
-	lbl.Font           = Enum.Font.GothamBold
-	lbl.Parent         = f
+	lbl.Text             = " "..text:upper().." "
+	lbl.TextColor3       = ORANGE
+	lbl.TextSize         = 10
+	lbl.Font             = Enum.Font.GothamBold
+	lbl.Parent           = f
 end
 
 local function Slider(scroll, name, min, max, default, suffix, callback)
@@ -1002,7 +962,6 @@ Player.Idled:Connect(function()
 	VirtualUser:Button2Up(Vector2.zero, workspace.CurrentCamera.CFrame)
 end)
 
--- Freecam
 local function setFreecam(on)
 	freecamEnabled = on
 	local cam = workspace.CurrentCamera
@@ -1014,7 +973,7 @@ local function setFreecam(on)
 		local lv = cam.CFrame.LookVector
 		freecamPitch = math.asin(math.clamp(lv.Y,-1,1))
 		freecamYaw   = math.atan2(-lv.X,-lv.Z)
-		claimCamera("camlock") -- freecam borrows the camlock slot so it outranks aimbot
+		-- REMOVED: claimCamera — camera stays on Custom
 		UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
 		freecamConn = RunService.RenderStepped:Connect(function(dt)
 			if not freecamEnabled then return end
@@ -1038,13 +997,13 @@ local function setFreecam(on)
 		local hrpN = getHRP(); local humN = getHum()
 		if hrpN then hrpN.Anchored=false end
 		if humN then humN.WalkSpeed=16; humN.JumpPower=50 end
-		releaseCamera("camlock")
+		-- REMOVED: releaseCamera
 		UserInputService.MouseBehavior = Enum.MouseBehavior.Default
 	end
 end
 
 -- ══════════════════════════════════════════
--- CAM LOCK  (ported from ttwizz Open Aimbot)
+-- CAM LOCK
 -- ══════════════════════════════════════════
 local function setLockIndicator(on, name)
 	LockLabel.Text   = on and ("🔒 Locked: "..(name or "—")) or "🔒 Locked: —"
@@ -1068,7 +1027,6 @@ local function setLockIndicator(on, name)
 	end
 end
 
--- Target-acquisition: closest player inside fovRadius by screen distance from mouse
 local function camLockFindTarget()
 	local cam      = workspace.CurrentCamera
 	local mousePos = UserInputService:GetMouseLocation()
@@ -1093,18 +1051,15 @@ local function camLockFindTarget()
 end
 
 local function updateCamLockConnection()
-	-- Always tear down first
 	if camLockConn then
 		camLockConn:Disconnect()
 		camLockConn = nil
 	end
 
 	if camLockEnabled then
-		-- Acquire target at toggle time
 		lockedTarget = camLockFindTarget()
 
 		if not lockedTarget then
-			-- Nobody in FOV — silently abort
 			camLockEnabled = false
 			setLockIndicator(false)
 			return
@@ -1113,13 +1068,12 @@ local function updateCamLockConnection()
 		setLockIndicator(true, lockedTarget.Name)
 		targetDeadTimer = 0
 
-		-- Claim Scriptable camera; aimbot defers to us if both are on
-		claimCamera("camlock")
+		-- REMOVED: claimCamera — camera stays on Custom mode
+		-- Only rotate toward target, don't set position
 
 		camLockConn = RunService.RenderStepped:Connect(function(dt)
-			local camNow = workspace.CurrentCamera
+			local cam = workspace.CurrentCamera
 
-			-- Target gone?
 			if not lockedTarget or not lockedTarget.Character then
 				targetDeadTimer += dt
 				if targetDeadTimer >= 3 then
@@ -1144,33 +1098,21 @@ local function updateCamLockConnection()
 
 			targetDeadTimer = 0
 
-			-- Always derive origin from our own head/HRP each frame.
-			-- cam.CFrame.Position is frozen in Scriptable mode so the
-			-- camera would stay stuck in place while the player moves.
-			local myChar  = Player.Character
-			local myHead  = myChar and myChar:FindFirstChild("Head")
-			local myHRP   = myChar and myChar:FindFirstChild("HumanoidRootPart")
-			local origin  = myHead and (myHead.Position + Vector3.new(0, 0.5, 0))
-			               or myHRP and myHRP.Position
-			               or camNow.CFrame.Position   -- final fallback
-
+			-- FIX: Only update rotation, keep camera position as-is
+			-- This allows zoom and normal movement to still work
 			local predicted = head.Position + (hrp.Velocity or Vector3.zero) * camLockPrediction
 			local alpha     = 1 - (1 - lockSmooth) ^ (dt * 60)
-			-- Lerp only the rotation, then snap position to the live origin
-			local goalCF    = CFrame.lookAt(origin, predicted)
-			local lerpedRot = camNow.CFrame:Lerp(goalCF, alpha).Rotation
-			camNow.CFrame   = CFrame.new(origin) * lerpedRot
+			local currentPos = cam.CFrame.Position
+			local goalCF    = CFrame.new(currentPos, predicted)
+			cam.CFrame      = cam.CFrame:Lerp(goalCF, alpha)
 		end)
 	else
-		-- Release camera back to Custom (only if we own it)
-		releaseCamera("camlock")
 		lockedTarget    = nil
 		targetDeadTimer = 0
 		setLockIndicator(false)
 	end
 end
 
--- Toggle cam lock on key press
 UserInputService.InputBegan:Connect(function(input, gpe)
 	if gpe then return end
 	if input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode == camLockKey then
@@ -1180,29 +1122,24 @@ UserInputService.InputBegan:Connect(function(input, gpe)
 end)
 
 -- ══════════════════════════════════════════
--- AIMBOT (camera mode, hold-to-aim)
+-- AIMBOT
 -- ══════════════════════════════════════════
 UserInputService.InputBegan:Connect(function(input, gpe)
 	if gpe or UserInputService:GetFocusedTextBox() then return end
 	if aimbotEnabled and input.KeyCode == aimbotKey then
 		aimbotHolding = true
 		aimbotTarget  = nil
-		-- Only claim camera if camlock isn't already using it
-		if not camLockEnabled then
-			claimCamera("aimbot")
-		end
+		-- REMOVED: claimCamera
 	end
 end)
 UserInputService.InputEnded:Connect(function(input)
 	if input.KeyCode == aimbotKey then
 		aimbotHolding = false
 		aimbotTarget  = nil
-		-- Only release if aimbot was the owner (camlock may still be active)
-		releaseCamera("aimbot")
+		-- REMOVED: releaseCamera
 	end
 end)
 
--- TriggerBot keys
 UserInputService.InputBegan:Connect(function(input, gpe)
 	if gpe or UserInputService:GetFocusedTextBox() then return end
 	if triggerEnabled and input.KeyCode == triggerKey then triggerHolding = true end
@@ -1211,7 +1148,6 @@ UserInputService.InputEnded:Connect(function(input)
 	if input.KeyCode == triggerKey then triggerHolding = false end
 end)
 
--- Aimbot + TriggerBot loop
 RunService.RenderStepped:Connect(function(dt)
 	if aimbotEnabled and aimbotHolding then
 		if not aimbotTarget or not aimbotTarget.Character then
@@ -1223,18 +1159,12 @@ RunService.RenderStepped:Connect(function(dt)
 			             or aimbotTarget.Character:FindFirstChild("HumanoidRootPart")
 			local hum  = aimbotTarget.Character:FindFirstChildOfClass("Humanoid")
 			if part and hum and hum.Health > 0 then
-				local cam    = workspace.CurrentCamera
-				-- Same fix: read origin from our head, not cam.CFrame.Position
-				local myChar = Player.Character
-				local myHead = myChar and myChar:FindFirstChild("Head")
-				local myHRP  = myChar and myChar:FindFirstChild("HumanoidRootPart")
-				local origin = myHead and (myHead.Position + Vector3.new(0, 0.5, 0))
-				               or myHRP and myHRP.Position
-				               or cam.CFrame.Position
-				local alpha    = 1 - (1 - aimbotSmooth)^(dt*60)
-				local goalCF   = CFrame.lookAt(origin, part.Position)
-				local lerpedRot = cam.CFrame:Lerp(goalCF, alpha).Rotation
-				cam.CFrame     = CFrame.new(origin) * lerpedRot
+				local cam = workspace.CurrentCamera
+				-- FIX: Only update rotation, keep camera position as-is
+				local alpha     = 1 - (1 - aimbotSmooth)^(dt*60)
+				local currentPos = cam.CFrame.Position
+				local goalCF    = CFrame.new(currentPos, part.Position)
+				cam.CFrame      = cam.CFrame:Lerp(goalCF, alpha)
 			else
 				aimbotTarget = nil
 			end
@@ -1256,7 +1186,6 @@ RunService.RenderStepped:Connect(function(dt)
 	end
 end)
 
--- Bullet TP
 UserInputService.InputBegan:Connect(function(input, gpe)
 	if gpe or not bulletTpEnabled or input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
 	local target = getClosestPlayer()
@@ -1267,18 +1196,13 @@ UserInputService.InputBegan:Connect(function(input, gpe)
 	playerHRP.CFrame = hrp.CFrame * CFrame.new(0,0,3)
 end)
 
--- Respawn cleanup
 Player.CharacterAdded:Connect(function(char)
 	flyEnabled = false; bv=nil; bg=nil
 	if freecamEnabled then
 		if freecamConn then freecamConn:Disconnect(); freecamConn=nil end
 		freecamEnabled = false
-		releaseCamera("camlock")
 		UserInputService.MouseBehavior = Enum.MouseBehavior.Default
 	end
-	-- Force camera type clean regardless of owner tracking
-	cameraOwner = "none"
-	workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
 	char:WaitForChild("HumanoidRootPart")
 	if noclipEnabled then
 		for _,p in char:GetDescendants() do if p:IsA("BasePart") then p.CanCollide=false end end
@@ -1335,16 +1259,16 @@ local function applyESP(plr)
 	bb.Parent       = head
 
 	local nameLbl = Instance.new("TextLabel")
-	nameLbl.Size                 = UDim2.new(1,0,0,20)
+	nameLbl.Size                   = UDim2.new(1,0,0,20)
 	nameLbl.BackgroundTransparency = 1
-	nameLbl.Text                 = plr.Name
-	nameLbl.TextColor3           = ORANGE
-	nameLbl.TextSize             = 13
-	nameLbl.Font                 = Enum.Font.GothamBold
-	nameLbl.TextStrokeColor3     = Color3.fromRGB(0,0,0)
+	nameLbl.Text                   = plr.Name
+	nameLbl.TextColor3             = ORANGE
+	nameLbl.TextSize               = 13
+	nameLbl.Font                   = Enum.Font.GothamBold
+	nameLbl.TextStrokeColor3       = Color3.fromRGB(0,0,0)
 	nameLbl.TextStrokeTransparency = 0.4
-	nameLbl.Visible              = espNames
-	nameLbl.Parent               = bb
+	nameLbl.Visible                = espNames
+	nameLbl.Parent                 = bb
 
 	local hpBG = Instance.new("Frame")
 	hpBG.Size             = UDim2.new(1,0,0,7)
@@ -1443,7 +1367,6 @@ Toggle(as,"Enable Aimbot","Hold aim key to lock onto nearest player",false,funct
 	aimbotEnabled=on
 	if not on then
 		aimbotHolding=false; aimbotTarget=nil
-		releaseCamera("aimbot")
 	end
 end)
 Keybind(as,"Aim Key","Hold this key to aim",Enum.KeyCode.Q,function(k) aimbotKey=k end)
@@ -1485,13 +1408,12 @@ Toggle(as,"Silent Aim","Silently snaps bullets to nearest player",false,function
 	end
 end)
 
-SectionHeader(as,"Camera Lock  (ttwizz)")
+SectionHeader(as,"Camera Lock")
 Keybind(as,"Cam Lock Key","Press to toggle lock onto nearest player",Enum.KeyCode.F,function(k)
 	camLockKey = k
 end)
 Slider(as,"Lock Smoothness",1,20,4,"",function(v) lockSmooth=v/20 end)
 Slider(as,"Lock Prediction",0,50,10,"0.01s",function(v) camLockPrediction=v/100 end)
-
 Toggle(as,"Bullet TP","Flash-TPs to target on left click",false,function(on) bulletTpEnabled=on end)
 
 SectionHeader(as,"FOV")
@@ -1542,4 +1464,4 @@ Toggle(es,"Chams","Semi-transparent fill through walls",false,function(on) espCh
 -- ACTIVATE FIRST TAB
 -- ══════════════════════════════════════════
 activateTab(tabMovement)
-print("[MangoGUI v2.9] Loaded ✓ — camera follows player fix")
+print("[MangoGUI v2.9] Loaded ✓")
