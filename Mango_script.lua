@@ -185,16 +185,16 @@ local freecamPitch   = 0
 local freecamYaw     = 0
 local freecamSpeed   = 40
 
+-- ══════════════════════════════════════════
+-- CAM LOCK STATE (ttwizz Open Aimbot style)
+-- ══════════════════════════════════════════
 local camLockEnabled    = false
 local camLockKey        = Enum.KeyCode.F
 local camLockPrediction = 0.1
 local lockSmooth        = 0.2
-local lockedTarget      = nil
+local camLockTarget     = nil  -- the Character model (not Player)
 local camLockConn       = nil
-local targetDeadTimer   = 0
-
--- REMOVED: Camera owner system entirely
--- Camera stays on Custom mode at all times
+local camLockTween      = nil
 
 local espEnabled = false
 local espNames   = true
@@ -294,6 +294,9 @@ RunService.RenderStepped:Connect(function()
 	FovCircle.Position = UDim2.new(0, m.X - fovRadius, 0, m.Y - fovRadius)
 end)
 
+-- ══════════════════════════════════════════
+-- LOCK INDICATOR HUD
+-- ══════════════════════════════════════════
 local LockIndicator = Instance.new("Frame")
 LockIndicator.Size             = UDim2.new(0,220,0,36)
 LockIndicator.AnchorPoint      = Vector2.new(0.5,0)
@@ -335,7 +338,7 @@ LockLabel.Parent               = LockIndicator
 
 task.spawn(function()
 	while true do
-		if camLockEnabled and lockedTarget then
+		if camLockEnabled and camLockTarget then
 			TweenService:Create(LockDot,
 				TweenInfo.new(0.6,Enum.EasingStyle.Sine,Enum.EasingDirection.InOut,-1,true),
 				{ BackgroundTransparency = 0.7 }
@@ -973,7 +976,6 @@ local function setFreecam(on)
 		local lv = cam.CFrame.LookVector
 		freecamPitch = math.asin(math.clamp(lv.Y,-1,1))
 		freecamYaw   = math.atan2(-lv.X,-lv.Z)
-		-- REMOVED: claimCamera — camera stays on Custom
 		UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
 		freecamConn = RunService.RenderStepped:Connect(function(dt)
 			if not freecamEnabled then return end
@@ -997,13 +999,15 @@ local function setFreecam(on)
 		local hrpN = getHRP(); local humN = getHum()
 		if hrpN then hrpN.Anchored=false end
 		if humN then humN.WalkSpeed=16; humN.JumpPower=50 end
-		-- REMOVED: releaseCamera
 		UserInputService.MouseBehavior = Enum.MouseBehavior.Default
 	end
 end
 
 -- ══════════════════════════════════════════
--- CAM LOCK
+-- CAM LOCK (ttwizz Open Aimbot style)
+-- Uses TweenService on Camera.CFrame, no
+-- Scriptable mode, no position override.
+-- Camera stays Custom so zoom works fine.
 -- ══════════════════════════════════════════
 local function setLockIndicator(on, name)
 	LockLabel.Text   = on and ("🔒 Locked: "..(name or "—")) or "🔒 Locked: —"
@@ -1020,13 +1024,14 @@ local function setLockIndicator(on, name)
 			TweenInfo.new(0.22,Enum.EasingStyle.Quad,Enum.EasingDirection.In),
 			{ Position = UDim2.new(0.5,0,0,-50) }
 		):Play()
-		task.delay(0.22,function()
+		task.delay(0.22, function()
 			LockIndicator.Visible  = false
 			LockIndicator.Position = UDim2.new(0.5,0,0,14)
 		end)
 	end
 end
 
+-- Find closest player to mouse within fovRadius
 local function camLockFindTarget()
 	local cam      = workspace.CurrentCamera
 	local mousePos = UserInputService:GetMouseLocation()
@@ -1041,7 +1046,7 @@ local function camLockFindTarget()
 					local d = (Vector2.new(sp.X, sp.Y) - mousePos).Magnitude
 					if d < fovRadius and d < closestDist then
 						closestDist = d
-						closest     = plr
+						closest     = plr.Character
 					end
 				end
 			end
@@ -1050,74 +1055,77 @@ local function camLockFindTarget()
 	return closest
 end
 
-local function updateCamLockConnection()
-	if camLockConn then
-		camLockConn:Disconnect()
-		camLockConn = nil
+-- ttwizz-style: TweenService on Camera.CFrame toward target,
+-- reading cam.CFrame.Position each frame so position is never overridden
+local function updateCamLock()
+	if camLockConn then camLockConn:Disconnect(); camLockConn = nil end
+	if camLockTween then camLockTween:Cancel(); camLockTween = nil end
+
+	if not camLockEnabled then
+		camLockTarget = nil
+		setLockIndicator(false)
+		return
 	end
 
-	if camLockEnabled then
-		lockedTarget = camLockFindTarget()
+	camLockTarget = camLockFindTarget()
 
-		if not lockedTarget then
+	if not camLockTarget then
+		camLockEnabled = false
+		setLockIndicator(false)
+		return
+	end
+
+	local plr = Players:GetPlayerFromCharacter(camLockTarget)
+	setLockIndicator(true, plr and plr.Name or "?")
+
+	camLockConn = RunService.RenderStepped:Connect(function(dt)
+		local cam = workspace.CurrentCamera
+
+		-- Validate target each frame
+		if not camLockTarget or not camLockTarget.Parent then
 			camLockEnabled = false
-			setLockIndicator(false)
+			updateCamLock()
 			return
 		end
 
-		setLockIndicator(true, lockedTarget.Name)
-		targetDeadTimer = 0
+		local head = camLockTarget:FindFirstChild("Head")
+		local hrp  = camLockTarget:FindFirstChild("HumanoidRootPart")
+		local hum  = camLockTarget:FindFirstChildOfClass("Humanoid")
 
-		-- REMOVED: claimCamera — camera stays on Custom mode
-		-- Only rotate toward target, don't set position
+		if not head or not hrp or not hum or hum.Health <= 0 then
+			camLockEnabled = false
+			updateCamLock()
+			return
+		end
 
-		camLockConn = RunService.RenderStepped:Connect(function(dt)
-			local cam = workspace.CurrentCamera
+		-- Predicted position (velocity * prediction time)
+		local predicted = head.Position + (hrp.AssemblyLinearVelocity or Vector3.zero) * camLockPrediction
 
-			if not lockedTarget or not lockedTarget.Character then
-				targetDeadTimer += dt
-				if targetDeadTimer >= 3 then
-					camLockEnabled = false
-					updateCamLockConnection()
-				end
-				return
-			end
+		-- ttwizz camera aim: CFrame.new(camPos, target) with TweenService smoothing
+		-- This only changes the look direction, never the position
+		local camPos  = cam.CFrame.Position
+		local goalCF  = CFrame.new(camPos, predicted)
 
-			local hrp  = lockedTarget.Character:FindFirstChild("HumanoidRootPart")
-			local head = lockedTarget.Character:FindFirstChild("Head")
-			local hum  = lockedTarget.Character:FindFirstChildOfClass("Humanoid")
-
-			if not hrp or not head or not hum or hum.Health <= 0 then
-				targetDeadTimer += dt
-				if targetDeadTimer >= 3 then
-					camLockEnabled = false
-					updateCamLockConnection()
-				end
-				return
-			end
-
-			targetDeadTimer = 0
-
-			-- FIX: Only update rotation, keep camera position as-is
-			-- This allows zoom and normal movement to still work
-			local predicted = head.Position + (hrp.Velocity or Vector3.zero) * camLockPrediction
-			local alpha     = 1 - (1 - lockSmooth) ^ (dt * 60)
-			local currentPos = cam.CFrame.Position
-			local goalCF    = CFrame.new(currentPos, predicted)
-			cam.CFrame      = cam.CFrame:Lerp(goalCF, alpha)
-		end)
-	else
-		lockedTarget    = nil
-		targetDeadTimer = 0
-		setLockIndicator(false)
-	end
+		if lockSmooth > 0 then
+			-- Cancel previous tween and start a new one each frame for smooth tracking
+			if camLockTween then camLockTween:Cancel() end
+			camLockTween = TweenService:Create(cam,
+				TweenInfo.new(math.clamp(lockSmooth, 0.01, 0.99), Enum.EasingStyle.Sine, Enum.EasingDirection.Out),
+				{ CFrame = goalCF }
+			)
+			camLockTween:Play()
+		else
+			cam.CFrame = goalCF
+		end
+	end)
 end
 
+-- Toggle cam lock on key press
 UserInputService.InputBegan:Connect(function(input, gpe)
 	if gpe then return end
 	if input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode == camLockKey then
 		camLockEnabled = not camLockEnabled
-		updateCamLockConnection()
+		updateCamLock()
 	end
 end)
 
@@ -1129,14 +1137,12 @@ UserInputService.InputBegan:Connect(function(input, gpe)
 	if aimbotEnabled and input.KeyCode == aimbotKey then
 		aimbotHolding = true
 		aimbotTarget  = nil
-		-- REMOVED: claimCamera
 	end
 end)
 UserInputService.InputEnded:Connect(function(input)
 	if input.KeyCode == aimbotKey then
 		aimbotHolding = false
 		aimbotTarget  = nil
-		-- REMOVED: releaseCamera
 	end
 end)
 
@@ -1159,12 +1165,11 @@ RunService.RenderStepped:Connect(function(dt)
 			             or aimbotTarget.Character:FindFirstChild("HumanoidRootPart")
 			local hum  = aimbotTarget.Character:FindFirstChildOfClass("Humanoid")
 			if part and hum and hum.Health > 0 then
-				local cam = workspace.CurrentCamera
-				-- FIX: Only update rotation, keep camera position as-is
-				local alpha     = 1 - (1 - aimbotSmooth)^(dt*60)
+				local cam        = workspace.CurrentCamera
 				local currentPos = cam.CFrame.Position
-				local goalCF    = CFrame.new(currentPos, part.Position)
-				cam.CFrame      = cam.CFrame:Lerp(goalCF, alpha)
+				local goalCF     = CFrame.new(currentPos, part.Position)
+				local alpha      = 1 - (1 - aimbotSmooth)^(dt*60)
+				cam.CFrame       = cam.CFrame:Lerp(goalCF, alpha)
 			else
 				aimbotTarget = nil
 			end
@@ -1212,9 +1217,9 @@ Player.CharacterAdded:Connect(function(char)
 	end
 	if camLockEnabled then
 		task.wait(1)
-		updateCamLockConnection()
+		updateCamLock()
 	else
-		lockedTarget = nil
+		camLockTarget = nil
 		setLockIndicator(false)
 	end
 end)
@@ -1365,9 +1370,7 @@ end)
 SectionHeader(as,"Aimbot")
 Toggle(as,"Enable Aimbot","Hold aim key to lock onto nearest player",false,function(on)
 	aimbotEnabled=on
-	if not on then
-		aimbotHolding=false; aimbotTarget=nil
-	end
+	if not on then aimbotHolding=false; aimbotTarget=nil end
 end)
 Keybind(as,"Aim Key","Hold this key to aim",Enum.KeyCode.Q,function(k) aimbotKey=k end)
 SectionHeader(as,"Aim Part")
@@ -1409,7 +1412,7 @@ Toggle(as,"Silent Aim","Silently snaps bullets to nearest player",false,function
 end)
 
 SectionHeader(as,"Camera Lock")
-Keybind(as,"Cam Lock Key","Press to toggle lock onto nearest player",Enum.KeyCode.F,function(k)
+Keybind(as,"Cam Lock Key","Press to toggle camera lock onto nearest player",Enum.KeyCode.F,function(k)
 	camLockKey = k
 end)
 Slider(as,"Lock Smoothness",1,20,4,"",function(v) lockSmooth=v/20 end)
