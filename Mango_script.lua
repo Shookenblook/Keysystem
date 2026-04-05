@@ -4,8 +4,7 @@ local LocalPlayer = Players.LocalPlayer
 
 -- [[ CONFIGURATION ]] --
 -- Change this to your current Ngrok URL (must end with /verify)
-local NGROK_URL = "https://a1b2-c3d4.ngrok-free.dev/verify"
-
+local NGROK_URL = local NGROK_URL = "https://subventionary-letha-boughten.ngrok-free.dev/verify"
 local function CheckWhitelist()
     print("[Mango] Checking whitelist for " .. LocalPlayer.Name .. "...")
     
