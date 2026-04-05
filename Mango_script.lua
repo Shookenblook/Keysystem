@@ -203,6 +203,26 @@ local lockedTarget      = nil
 local camLockConn       = nil
 local targetDeadTimer   = 0
 
+-- ══════════════════════════════════════════
+-- CAMERA OWNER SYSTEM
+-- Tracks who currently needs Scriptable mode
+-- so aimbot and camlock don't fight each other
+-- ══════════════════════════════════════════
+-- "none" | "aimbot" | "camlock"
+local cameraOwner = "none"
+
+local function claimCamera(owner)
+	cameraOwner = owner
+	workspace.CurrentCamera.CameraType = Enum.CameraType.Scriptable
+end
+
+local function releaseCamera(owner)
+	if cameraOwner == owner then
+		cameraOwner = "none"
+		workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
+	end
+end
+
 -- ESP state
 local espEnabled = false
 local espNames   = true
@@ -470,7 +490,7 @@ local VerLabel = Instance.new("TextLabel")
 VerLabel.Size                 = UDim2.new(0,50,0,14)
 VerLabel.Position             = UDim2.new(0,122,0.5,-7)
 VerLabel.BackgroundTransparency = 1
-VerLabel.Text                 = "v2.7"
+VerLabel.Text                 = "v2.8"
 VerLabel.TextColor3           = SUBTEXT
 VerLabel.TextSize             = 11
 VerLabel.Font                 = Enum.Font.Gotham
@@ -994,7 +1014,7 @@ local function setFreecam(on)
 		local lv = cam.CFrame.LookVector
 		freecamPitch = math.asin(math.clamp(lv.Y,-1,1))
 		freecamYaw   = math.atan2(-lv.X,-lv.Z)
-		cam.CameraType = Enum.CameraType.Scriptable
+		claimCamera("camlock") -- freecam borrows the camlock slot so it outranks aimbot
 		UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
 		freecamConn = RunService.RenderStepped:Connect(function(dt)
 			if not freecamEnabled then return end
@@ -1018,7 +1038,7 @@ local function setFreecam(on)
 		local hrpN = getHRP(); local humN = getHum()
 		if hrpN then hrpN.Anchored=false end
 		if humN then humN.WalkSpeed=16; humN.JumpPower=50 end
-		cam.CameraType = Enum.CameraType.Custom
+		releaseCamera("camlock")
 		UserInputService.MouseBehavior = Enum.MouseBehavior.Default
 	end
 end
@@ -1079,8 +1099,6 @@ local function updateCamLockConnection()
 		camLockConn = nil
 	end
 
-	local cam = workspace.CurrentCamera
-
 	if camLockEnabled then
 		-- Acquire target at toggle time
 		lockedTarget = camLockFindTarget()
@@ -1095,8 +1113,8 @@ local function updateCamLockConnection()
 		setLockIndicator(true, lockedTarget.Name)
 		targetDeadTimer = 0
 
-		-- Set camera to Scriptable so the default camera script stops fighting us
-		cam.CameraType = Enum.CameraType.Scriptable
+		-- Claim Scriptable camera; aimbot defers to us if both are on
+		claimCamera("camlock")
 
 		camLockConn = RunService.RenderStepped:Connect(function(dt)
 			local camNow = workspace.CurrentCamera
@@ -1127,15 +1145,13 @@ local function updateCamLockConnection()
 			targetDeadTimer = 0
 
 			local origin    = camNow.CFrame.Position
-			-- Prediction: lead the target by its velocity * camLockPrediction seconds
 			local predicted = head.Position + (hrp.Velocity or Vector3.zero) * camLockPrediction
-			-- Frame-rate independent lerp (same feel at 30 or 144 fps)
 			local alpha     = 1 - (1 - lockSmooth) ^ (dt * 60)
 			camNow.CFrame   = camNow.CFrame:Lerp(CFrame.lookAt(origin, predicted), alpha)
 		end)
 	else
-		-- Restore camera to the player
-		cam.CameraType  = Enum.CameraType.Custom
+		-- Release camera back to Custom (only if we own it)
+		releaseCamera("camlock")
 		lockedTarget    = nil
 		targetDeadTimer = 0
 		setLockIndicator(false)
@@ -1159,18 +1175,18 @@ UserInputService.InputBegan:Connect(function(input, gpe)
 	if aimbotEnabled and input.KeyCode == aimbotKey then
 		aimbotHolding = true
 		aimbotTarget  = nil
-		workspace.CurrentCamera.CameraType = Enum.CameraType.Scriptable
+		-- Only claim camera if camlock isn't already using it
+		if not camLockEnabled then
+			claimCamera("aimbot")
+		end
 	end
 end)
 UserInputService.InputEnded:Connect(function(input)
 	if input.KeyCode == aimbotKey then
-		if aimbotHolding then
-			if not camLockEnabled then
-				workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
-			end
-		end
 		aimbotHolding = false
 		aimbotTarget  = nil
+		-- Only release if aimbot was the owner (camlock may still be active)
+		releaseCamera("aimbot")
 	end
 end)
 
@@ -1236,9 +1252,12 @@ Player.CharacterAdded:Connect(function(char)
 	if freecamEnabled then
 		if freecamConn then freecamConn:Disconnect(); freecamConn=nil end
 		freecamEnabled = false
-		workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
-		UserInputService.MouseBehavior     = Enum.MouseBehavior.Default
+		releaseCamera("camlock")
+		UserInputService.MouseBehavior = Enum.MouseBehavior.Default
 	end
+	-- Force camera type clean regardless of owner tracking
+	cameraOwner = "none"
+	workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
 	char:WaitForChild("HumanoidRootPart")
 	if noclipEnabled then
 		for _,p in char:GetDescendants() do if p:IsA("BasePart") then p.CanCollide=false end end
@@ -1403,9 +1422,7 @@ Toggle(as,"Enable Aimbot","Hold aim key to lock onto nearest player",false,funct
 	aimbotEnabled=on
 	if not on then
 		aimbotHolding=false; aimbotTarget=nil
-		if not camLockEnabled and not freecamEnabled then
-			workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
-		end
+		releaseCamera("aimbot")
 	end
 end)
 Keybind(as,"Aim Key","Hold this key to aim",Enum.KeyCode.Q,function(k) aimbotKey=k end)
@@ -1504,4 +1521,4 @@ Toggle(es,"Chams","Semi-transparent fill through walls",false,function(on) espCh
 -- ACTIVATE FIRST TAB
 -- ══════════════════════════════════════════
 activateTab(tabMovement)
-print("[MangoGUI v2.7] Loaded ✓ — ttwizz cam lock integrated")
+print("[MangoGUI v2.8] Loaded ✓ — aimbot camera conflict fixed")
